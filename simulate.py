@@ -94,7 +94,7 @@ class Simulation:
                         self.healthy -= 1
                         self.infected += 1
 
-        print("  collisions: %d" % step_collisions)
+        print("\tHealthy: %d\n\tInfected: %d" % (self.healthy, self.infected))
         self.collisions += step_collisions
         self.step += 1
         self.healthy_history.append(self.healthy)
