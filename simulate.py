@@ -10,16 +10,21 @@ SCREEN_WIDTH = 600
 SCREEN_HEIGHT = 600
 SCREEN_TITLE = "Population Simulator"
 
-HEALTHY_COLOR = arcade.color.AMAZON
-INFECTED_COLOR = arcade.color.CARMINE_RED
+BG_COLOR = (255, 255, 255)
+HEALTHY_COLOR = (124, 198, 254)
+INFECTED_COLOR = (231, 187, 227)
+
+HEALTHY_COLOR_PLT = (HEALTHY_COLOR[0] / 255, HEALTHY_COLOR[1] / 255, HEALTHY_COLOR[2] / 255)
+INFECTED_COLOR_PLT = (INFECTED_COLOR[0] / 255, INFECTED_COLOR[1] / 255, INFECTED_COLOR[2] / 255)
 
 STEP_SIZE = 2
-STEP_DELAY = 1             # ms
+STEP_DELAY = 0  # ms
 SIMULATION_LENGTH = 600
-PERSON_RADIUS = 0.1
-POPULATION_LENGTH = 10
+PERSON_RADIUS = 0.15
+POPULATION_SIZE_ROOT = 10
 
-RESOLUTION_FACTOR = SCREEN_WIDTH / POPULATION_LENGTH
+RESOLUTION_FACTOR = SCREEN_WIDTH / POPULATION_SIZE_ROOT
+
 
 class Person:
     def __init__(self, coords):
@@ -47,11 +52,12 @@ class Person:
     @staticmethod
     def distance(person1, person2):
         return sqrt(pow(person1.coords[0] - person2.coords[0], 2)
-                  + pow(person1.coords[1] - person2.coords[1], 2))
+                    + pow(person1.coords[1] - person2.coords[1], 2))
 
     @staticmethod
-    def collide(person1, person2):
+    def are_colliding(person1, person2):
         return Person.distance(person1, person2) <= 2 * PERSON_RADIUS * RESOLUTION_FACTOR
+
 
 class Simulation:
     def __init__(self, size_x, size_y):
@@ -61,49 +67,57 @@ class Simulation:
 
         self.healthy = size_x * size_y - 1
         self.infected = 1
-        self.history = []
+        self.healthy_history = []
+        self.infected_history = []
 
         self.population = set()
         for i in range(size_x):
             for j in range(size_y):
-                new_person = Person((i * RESOLUTION_FACTOR,  j * RESOLUTION_FACTOR))
-                if i == POPULATION_LENGTH / 2 and j == POPULATION_LENGTH / 2:
+                new_person = Person((i * RESOLUTION_FACTOR, j * RESOLUTION_FACTOR))
+                if i == POPULATION_SIZE_ROOT // 2 and j == POPULATION_SIZE_ROOT // 2:
                     new_person.infect()
                 self.population.add(new_person)
 
-    def runStep(self):
-            print("Simulation step #%d" % self.step)
-            step_collisions = 0
+    def run_step(self):
+        print("Simulation step #%d" % self.step)
+        step_collisions = 0
 
-            for person in self.population:
-                person.step()
-                for other_person in self.population:
+        for person in self.population:
+            person.step()
+            for other_person in self.population:
 
-                    if (not person is other_person) and Person.collide(person, other_person):
-                        step_collisions += 1
-                        if person.is_infected() ^ other_person.is_infected():
-                            person.infect()
-                            other_person.infect()
-                            self.healthy -= 1
-                            self.infected += 1
+                if (person is not other_person) and Person.are_colliding(person, other_person):
+                    step_collisions += 1
+                    if person.is_infected() ^ other_person.is_infected():
+                        person.infect()
+                        other_person.infect()
+                        self.healthy -= 1
+                        self.infected += 1
 
-            print("  collisions: %d" % step_collisions)
-            self.collisions += step_collisions
-            self.step += 1
-            self.history.append((self.healthy, self.infected))
-            time.sleep(STEP_DELAY / 1000)
+        print("  collisions: %d" % step_collisions)
+        self.collisions += step_collisions
+        self.step += 1
+        self.healthy_history.append(self.healthy)
+        self.infected_history.append(self.infected)
+        # time.sleep(STEP_DELAY / 1000)
+
+    def plot(self):
+        line = plt.plot(self.infected_history)
+        plt.setp(line, color=INFECTED_COLOR_PLT, linewidth=3.0, label='Infected')
+        plt.ylabel('Simulation history')
+        plt.show()
 
     def end(self):
         arcade.close_window()
         print("%d total collisions" % self.collisions)
-        plt.plot(self.history)
-        plt.ylabel('Simulation history')
-        plt.show()
+        self.plot()
+
 
 class SimulationWindow(arcade.Window):
     def __init__(self):
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
-        self.simulation = Simulation(POPULATION_LENGTH, POPULATION_LENGTH)
+        arcade.set_background_color(BG_COLOR)
+        self.simulation = Simulation(POPULATION_SIZE_ROOT, POPULATION_SIZE_ROOT)
 
     def on_draw(self):
         arcade.start_render()
@@ -111,14 +125,15 @@ class SimulationWindow(arcade.Window):
             person.draw()
 
     def on_update(self, delta_time):
-        self.simulation.runStep()
-        if self.simulation.step >= SIMULATION_LENGTH:
+        self.simulation.run_step()
+        if self.simulation.healthy == 0:
             self.simulation.end()
+
 
 def main():
     SimulationWindow()
     arcade.run()
 
+
 if __name__ == "__main__":
     main()
-
