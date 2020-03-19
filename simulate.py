@@ -18,9 +18,9 @@ INFECTED_COLOR_PLT = (INFECTED_COLOR[0] / 255, INFECTED_COLOR[1] / 255, INFECTED
 
 STEP_SIZE = 1
 STEPS_PER_FRAME = 1
-POPULATION_SIZE_ROOT = 8  # 0 for testing setup
+POPULATION_SIZE_ROOT = 0  # 0 for testing setup
 RESOLUTION_FACTOR = SCREEN_WIDTH / (POPULATION_SIZE_ROOT + 1)
-PERSON_RADIUS = 10
+PERSON_RADIUS = 60
 
 
 class Person:
@@ -61,7 +61,6 @@ class Person:
             new_y = self.coords[1] + self.velocity * sin(self.direction)
 
         self.coords = (new_x, new_y)
-        self.direction %= 2 * pi
 
     def draw(self):
         arcade.draw_circle_filled(self.coords[0],
@@ -115,19 +114,17 @@ class Person:
 
     def bounce_v(self):
         self.direction = 2 * pi - self.direction
-        self.direction %= 2 * pi
 
     def bounce_h(self):
         self.direction = 1 * pi - self.direction
-        self.direction %= 2 * pi
 
 
 class Simulation:
     def __init__(self, size_x, size_y):
-        self.collision_history = {}
         print("Simulation has not yet begun")
         self.collisions = 0
         self.step = 0
+        self.can_bounce_again = {}
 
         self.healthy = size_x * size_y - 1
         self.infected = 1
@@ -137,7 +134,7 @@ class Simulation:
         if POPULATION_SIZE_ROOT <= 0:
             self.population = [Person(0, (400, 300)), Person(1, (200, 300))]
             self.population[0].direction = 0
-            self.population[1].direction = 0.1
+            self.population[1].direction = 0.7
         else:
             self.population = []
             for i in range(size_x):
@@ -162,16 +159,16 @@ class Simulation:
                 if Person.are_colliding(person, other_person):
                     step_collisions += 1
                     print("Step %d" % self.step)
-                    # if self.collision_history.get(key):
-                    Person.bounce(person, other_person)
-                        # self.collision_history[key] = False
+                    if self.can_bounce_again.get(key):
+                        Person.bounce(person, other_person)
+                        self.can_bounce_again[key] = False
                     if person.is_infected() ^ other_person.is_infected():
                         person.infect()
                         other_person.infect()
                         self.healthy -= 1
                         self.infected += 1
-                # else:
-                #     self.collision_history[key] = True
+                else:
+                    self.can_bounce_again[key] = True
             person.step()
 
         # print("\tHealthy: %d\n\tInfected: %d" % (self.healthy, self.infected))
@@ -194,8 +191,8 @@ class Simulation:
     def init_collision_history(self):
         for i in range(len(self.population)):
             for j in range(i):
-                self.collision_history[(i, j)] = True
-        print(self.collision_history)
+                self.can_bounce_again[(i, j)] = True
+        print(self.can_bounce_again)
 
 
 class SimulationWindow(arcade.Window):
