@@ -16,11 +16,11 @@ INFECTED_COLOR = (231, 187, 227)
 HEALTHY_COLOR_PLT = (HEALTHY_COLOR[0] / 255, HEALTHY_COLOR[1] / 255, HEALTHY_COLOR[2] / 255)
 INFECTED_COLOR_PLT = (INFECTED_COLOR[0] / 255, INFECTED_COLOR[1] / 255, INFECTED_COLOR[2] / 255)
 
-STEP_SIZE = 1
+STEP_SIZE = 0.2
 STEPS_PER_FRAME = 1
-POPULATION_SIZE_ROOT = 0  # 0 for testing setup
+POPULATION_SIZE_ROOT = 20  # set to 0 for debugging setup
 RESOLUTION_FACTOR = SCREEN_WIDTH / (POPULATION_SIZE_ROOT + 1)
-PERSON_RADIUS = 60
+PERSON_RADIUS = 5
 
 
 class Person:
@@ -28,9 +28,8 @@ class Person:
         self._person_id = person_id
         self.coords = coords
         self.is_healthy = True
-        self.direction = random.uniform(0, 2 * pi)
+        self.direction = random.uniform(0, tau)
         self.velocity = STEP_SIZE
-        print("Created person with direction %f" % self.direction)
 
     @property
     def id(self):
@@ -61,6 +60,7 @@ class Person:
             new_y = self.coords[1] + self.velocity * sin(self.direction)
 
         self.coords = (new_x, new_y)
+        self.direction %= tau
 
     def draw(self):
         arcade.draw_circle_filled(self.coords[0],
@@ -69,39 +69,44 @@ class Person:
                                   HEALTHY_COLOR if self.is_healthy else INFECTED_COLOR)
 
     def bounce_angle(self, other_person):
-        dx = self.coords[0] - other_person.coords[0]
-        dy = self.coords[1] - other_person.coords[1]
-        if dx == 0:
-            return abs(dy) / dy * pi / 2
+        dx = (self.coords[0] - other_person.coords[0])
+        dy = (self.coords[1] - other_person.coords[1])
         return atan2(dy, dx)
 
     @staticmethod
     def bounce(person1, person2):
+        # implements oblique collision physics
         print("Bounce:\nPerson1 direction before: %f\nPerson2 direction before: %f" % (
             person1.direction, person2.direction))
 
         bounce_angle = person1.bounce_angle(person2)
+        print("Bounce angle: %f" % bounce_angle)
 
+        # angles relative to the collision axis
         alpha = person1.direction - bounce_angle
         beta = person2.direction - bounce_angle
+        print("alpha: %f" % alpha)
+        print("beta: %f" % beta)
 
-        v1_x = person1.velocity * sin(alpha)
-        v1_y = person1.velocity * cos(alpha)
+        # calculate the velocities tangent and normal
+        # with regards to the collision axis
+        v1_tan = person1.velocity * sin(alpha)
+        v1_nor = person1.velocity * cos(alpha)
+        v2_tan = person2.velocity * sin(beta)
+        v2_nor = person2.velocity * cos(beta)
 
-        v2_x = person2.velocity * sin(beta)
-        v2_y = person2.velocity * cos(beta)
+        person1.velocity = sqrt(pow(v1_tan, 2) + pow(v2_nor, 2))
+        person2.velocity = sqrt(pow(v2_tan, 2) + pow(v1_nor, 2))
 
-        person1.velocity = sqrt(pow(v1_y, 2) + pow(v2_x, 2))
-        person2.velocity = sqrt(pow(v2_y, 2) + pow(v1_x, 2))
+        person1.direction = atan2(v1_tan, v2_nor)
+        person2.direction = atan2(v2_tan, v1_nor)
 
-        person1.direction = atan2(v1_y, v2_x)  # todo atan possibly wrong (- pi / 2 < atan x < pi / 2)
         person1.direction += bounce_angle
-
-        person2.direction = atan2(v2_y, v1_x)
         person2.direction += bounce_angle
 
-        print("Bounce:\nPerson1 direction after: %f\nPerson2 direction after: %f" % (
+        print("Person1 direction after: %f\nPerson2 direction after: %f" % (
             person1.direction, person2.direction))
+        print('*' * 10)
 
     @staticmethod
     def distance(person1, person2):
@@ -113,10 +118,10 @@ class Person:
         return Person.distance(person1, person2) <= 2 * PERSON_RADIUS
 
     def bounce_v(self):
-        self.direction = 2 * pi - self.direction
+        self.direction = tau - self.direction
 
     def bounce_h(self):
-        self.direction = 1 * pi - self.direction
+        self.direction = pi - self.direction
 
 
 class Simulation:
@@ -132,9 +137,12 @@ class Simulation:
         self.infected_history = []
 
         if POPULATION_SIZE_ROOT <= 0:
+            # debugging mode
             self.population = [Person(0, (400, 300)), Person(1, (200, 300))]
-            self.population[0].direction = 0
-            self.population[1].direction = 0.7
+            self.population[0].direction = pi
+            print("Created person with direction %f" % self.population[0].direction)
+            self.population[1].direction = 0.3
+            print("Created person with direction %f" % self.population[1].direction)
         else:
             self.population = []
             for i in range(size_x):
