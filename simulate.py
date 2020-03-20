@@ -2,8 +2,9 @@ import random
 from math import *
 import arcade
 import matplotlib.pyplot as plt
+from enum import Enum
 
-# todo infected as enum, better bookkeeping and graphing
+# todo move recovery logic to simulation, better bookkeeping and graphing
 
 # some constants to play with
 SCREEN_WIDTH = 600
@@ -28,11 +29,23 @@ PERSON_RADIUS = 12
 RECOVERY_PERIOD = 200
 
 
+class HealthState(Enum):
+    HEALTHY = 0
+    INFECTED = 1
+    RECOVERED = 2
+
+
+state_colors = {HealthState.HEALTHY: HEALTHY_COLOR,
+                HealthState.INFECTED: INFECTED_COLOR,
+                HealthState.RECOVERED: RECOVERED_COLOR}
+
+
 class Person:
     def __init__(self, person_id, coords):
         self._person_id = person_id
         self.coords = coords
-        self.is_healthy = True
+        self.health_state = HealthState.HEALTHY
+        # self.is_healthy = True  # todo
         self.infection_date = - RECOVERY_PERIOD * 8
         self.direction = random.uniform(0, tau)
         self.velocity = STEP_SIZE
@@ -43,24 +56,24 @@ class Person:
         return self._person_id
 
     def infect(self, date):
-        self.is_healthy = False
+        # self.is_healthy = False
+        self.health_state = HealthState.INFECTED
         self.infection_date = date
 
+    def is_healthy(self):
+        return self.health_state == HealthState.HEALTHY
+
     def is_infected(self, date):
-        return not self.is_healthy and self.infection_date + RECOVERY_PERIOD >= date
+        return self.health_state == HealthState.INFECTED
+        # return not self.is_healthy and self.infection_date + RECOVERY_PERIOD >= date
 
     def has_recovered(self, date):
-        return not self.is_healthy and self.infection_date + RECOVERY_PERIOD < date
-
-    def vel_x(self):
-        return self.velocity * cos(self.direction)
-
-    def vel_y(self):
-        return self.velocity * sin(self.direction)
+        return self.health_state == HealthState.RECOVERED
+        # return not self.is_healthy and self.infection_date + RECOVERY_PERIOD < date
 
     def step(self):
-        new_x = self.coords[0] + self.vel_x()
-        new_y = self.coords[1] + self.vel_y()
+        new_x = self.coords[0] + self.velocity * cos(self.direction)
+        new_y = self.coords[1] + self.velocity * sin(self.direction)
 
         if not (PERSON_RADIUS < new_x < SCREEN_WIDTH - PERSON_RADIUS):
             self.bounce_h()
@@ -74,15 +87,15 @@ class Person:
         self.direction %= tau
 
     def draw(self, date):
-        color = HEALTHY_COLOR
-        if self.has_recovered(date):
-            color = RECOVERED_COLOR
-        elif self.is_infected(date):
-            color = INFECTED_COLOR
+        # color = HEALTHY_COLOR
+        # if self.has_recovered(date):
+        #     color = RECOVERED_COLOR
+        # elif self.is_infected(date):
+        #     color = INFECTED_COLOR
         arcade.draw_circle_filled(center_x=self.coords[0],
                                   center_y=self.coords[1],
                                   radius=PERSON_RADIUS,
-                                  color=color)
+                                  color=state_colors.get(self.health_state))
 
     def bounce_angle(self, other_person):
         dx = self.coords[0] - other_person.coords[0]
@@ -174,11 +187,11 @@ class Simulation:
                     if self.can_bounce_again.get(key):
                         Person.bounce(person, other_person)
                         self.can_bounce_again[key] = False
-                    if person.is_infected(self.step) and other_person.is_healthy:
+                    if person.is_infected(self.step) and other_person.is_healthy():
                         other_person.infect(self.step)
                         self.healthy -= 1
                         self.infected += 1
-                    elif other_person.is_infected(self.step) and person.is_healthy:
+                    elif other_person.is_infected(self.step) and person.is_healthy():
                         person.infect(self.step)
                         self.healthy -= 1
                         self.infected += 1
