@@ -4,7 +4,7 @@ import arcade
 import matplotlib.pyplot as plt
 from enum import Enum
 
-# todo move recovery logic to simulation, better bookkeeping and graphing
+# todo better bookkeeping and graphing (incl. recovery stats)
 
 # some constants to play with
 SCREEN_WIDTH = 600
@@ -21,12 +21,12 @@ HEALTHY_COLOR_PLT = (HEALTHY_COLOR[0] / 255, HEALTHY_COLOR[1] / 255, HEALTHY_COL
 INFECTED_COLOR_PLT = (INFECTED_COLOR[0] / 255, INFECTED_COLOR[1] / 255, INFECTED_COLOR[2] / 255)
 RECOVERED_COLOR_PLT = (RECOVERED_COLOR[0] / 255, RECOVERED_COLOR[1] / 255, RECOVERED_COLOR[2] / 255)
 
-STEP_SIZE = 0.6
+STEP_SIZE = 1
 STEPS_PER_FRAME = 1
-POPULATION_SIZE_ROOT = 10  # set to 0 for debugging setup
+POPULATION_SIZE_ROOT = 8  # set to 0 for debugging setup
 RESOLUTION_FACTOR = SCREEN_WIDTH / (POPULATION_SIZE_ROOT + 1)
-PERSON_RADIUS = 12
-RECOVERY_PERIOD = 200
+PERSON_RADIUS = 15
+RECOVERY_PERIOD = 350
 
 
 class HealthState(Enum):
@@ -49,7 +49,6 @@ class Person:
         self.infection_date = - RECOVERY_PERIOD * 8
         self.direction = random.uniform(0, tau)
         self.velocity = STEP_SIZE
-        print("Created person")
 
     @property
     def id(self):
@@ -59,6 +58,9 @@ class Person:
         # self.is_healthy = False
         self.health_state = HealthState.INFECTED
         self.infection_date = date
+
+    def recover(self):
+        self.health_state = HealthState.RECOVERED
 
     def is_healthy(self):
         return self.health_state == HealthState.HEALTHY
@@ -149,7 +151,9 @@ class Simulation:
         self.collisions = 0
         self.step = 0
         self.can_bounce_again = {}
+        self.infection_dates = {}
 
+        # todo move those elsewhere
         self.healthy = size_x * size_y - 1
         self.infected = 1
         self.healthy_history = []
@@ -170,37 +174,27 @@ class Simulation:
                     coord_y = (j + 1) * RESOLUTION_FACTOR
                     new_person = Person(len(self.population), (coord_x, coord_y))
                     if i == POPULATION_SIZE_ROOT // 2 and j == POPULATION_SIZE_ROOT // 2:
-                        new_person.infect(self.step)
+                        self.infect(new_person)
                     self.population.append(new_person)
         self.init_collision_history()
 
     def run_step(self):
-        # print("Simulation step #%d" % self.step)
-        step_collisions = 0
-
+        self.recovery_check()
         for i, person in enumerate(self.population):
             for j, other_person in enumerate(self.population[:i]):
                 key = (person.id, other_person.id)
                 if Person.are_colliding(person, other_person):
-                    step_collisions += 1
-                    # print("Step %d" % self.step)
                     if self.can_bounce_again.get(key):
                         Person.bounce(person, other_person)
                         self.can_bounce_again[key] = False
                     if person.is_infected(self.step) and other_person.is_healthy():
-                        other_person.infect(self.step)
-                        self.healthy -= 1
-                        self.infected += 1
+                        self.infect(other_person)
                     elif other_person.is_infected(self.step) and person.is_healthy():
-                        person.infect(self.step)
-                        self.healthy -= 1
-                        self.infected += 1
+                        self.infect(person)
                 else:
                     self.can_bounce_again[key] = True
             person.step()
 
-        # print("\tHealthy: %d\n\tInfected: %d" % (self.healthy, self.infected))
-        self.collisions += step_collisions
         self.step += 1
         self.healthy_history.append(self.healthy)
         self.infected_history.append(self.infected)
@@ -213,14 +207,27 @@ class Simulation:
 
     def end(self):
         arcade.close_window()
-        # print("%d total collisions" % self.collisions)
         self.plot()
 
     def init_collision_history(self):
         for i in range(len(self.population)):
             for j in range(i):
                 self.can_bounce_again[(i, j)] = True
-        # print(self.can_bounce_again)
+
+    def infect(self, person):
+        person.infect(self.step)
+        self.infection_dates[person.id] = self.step
+        self.healthy -= 1
+        self.infected += 1
+        # todo manipulate history
+
+    def recovery_check(self):
+        for person_id in self.infection_dates.keys():
+            if self.infection_dates[person_id] + RECOVERY_PERIOD == self.step:
+                self.population[person_id].recover()
+                self.healthy += 1
+                self.infected -= 1
+                # todo manipulate history
 
 
 class SimulationWindow(arcade.Window):
@@ -233,12 +240,12 @@ class SimulationWindow(arcade.Window):
         arcade.start_render()
         for person in self.simulation.population:
             person.draw(self.simulation.step)
-            print("Drawing %s done" % person)
 
     def on_update(self, delta_time):
         for i in range(STEPS_PER_FRAME):
             self.simulation.run_step()
-        if self.simulation.healthy == 0:
+        # if self.simulation.infected == 0:
+        if self.simulation.step == 1000:
             self.simulation.end()
 
 
