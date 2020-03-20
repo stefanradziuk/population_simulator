@@ -3,24 +3,29 @@ from math import *
 import arcade
 import matplotlib.pyplot as plt
 
-# some constants to play with
+# todo infected as enum, better bookkeeping and graphing
 
+# some constants to play with
 SCREEN_WIDTH = 600
 SCREEN_HEIGHT = 600
 SCREEN_TITLE = "Population Simulator"
 
-BG_COLOR = (255, 255, 255)
+BG_COLOR = (250, 250, 250)
 HEALTHY_COLOR = (124, 198, 254)
 INFECTED_COLOR = (231, 187, 227)
+RECOVERED_COLOR = (204, 232, 204)
 
+BG_COLOR_PLT = (BG_COLOR[0] / 255, BG_COLOR[1] / 255, BG_COLOR[2] / 255)
 HEALTHY_COLOR_PLT = (HEALTHY_COLOR[0] / 255, HEALTHY_COLOR[1] / 255, HEALTHY_COLOR[2] / 255)
 INFECTED_COLOR_PLT = (INFECTED_COLOR[0] / 255, INFECTED_COLOR[1] / 255, INFECTED_COLOR[2] / 255)
+RECOVERED_COLOR_PLT = (RECOVERED_COLOR[0] / 255, RECOVERED_COLOR[1] / 255, RECOVERED_COLOR[2] / 255)
 
-STEP_SIZE = 0.2
+STEP_SIZE = 0.6
 STEPS_PER_FRAME = 1
-POPULATION_SIZE_ROOT = 20  # set to 0 for debugging setup
+POPULATION_SIZE_ROOT = 10  # set to 0 for debugging setup
 RESOLUTION_FACTOR = SCREEN_WIDTH / (POPULATION_SIZE_ROOT + 1)
-PERSON_RADIUS = 5
+PERSON_RADIUS = 12
+RECOVERY_PERIOD = 200
 
 
 class Person:
@@ -28,18 +33,24 @@ class Person:
         self._person_id = person_id
         self.coords = coords
         self.is_healthy = True
+        self.infection_date = - RECOVERY_PERIOD * 8
         self.direction = random.uniform(0, tau)
         self.velocity = STEP_SIZE
+        print("Created person")
 
     @property
     def id(self):
         return self._person_id
 
-    def infect(self):
+    def infect(self, date):
         self.is_healthy = False
+        self.infection_date = date
 
-    def is_infected(self):
-        return not self.is_healthy
+    def is_infected(self, date):
+        return not self.is_healthy and self.infection_date + RECOVERY_PERIOD >= date
+
+    def has_recovered(self, date):
+        return not self.is_healthy and self.infection_date + RECOVERY_PERIOD < date
 
     def vel_x(self):
         return self.velocity * cos(self.direction)
@@ -62,31 +73,30 @@ class Person:
         self.coords = (new_x, new_y)
         self.direction %= tau
 
-    def draw(self):
-        arcade.draw_circle_filled(self.coords[0],
-                                  self.coords[1],
-                                  PERSON_RADIUS,
-                                  HEALTHY_COLOR if self.is_healthy else INFECTED_COLOR)
+    def draw(self, date):
+        color = HEALTHY_COLOR
+        if self.has_recovered(date):
+            color = RECOVERED_COLOR
+        elif self.is_infected(date):
+            color = INFECTED_COLOR
+        arcade.draw_circle_filled(center_x=self.coords[0],
+                                  center_y=self.coords[1],
+                                  radius=PERSON_RADIUS,
+                                  color=color)
 
     def bounce_angle(self, other_person):
-        dx = (self.coords[0] - other_person.coords[0])
-        dy = (self.coords[1] - other_person.coords[1])
+        dx = self.coords[0] - other_person.coords[0]
+        dy = self.coords[1] - other_person.coords[1]
         return atan2(dy, dx)
 
+    # implements oblique collision physics
     @staticmethod
     def bounce(person1, person2):
-        # implements oblique collision physics
-        print("Bounce:\nPerson1 direction before: %f\nPerson2 direction before: %f" % (
-            person1.direction, person2.direction))
-
         bounce_angle = person1.bounce_angle(person2)
-        print("Bounce angle: %f" % bounce_angle)
 
         # angles relative to the collision axis
         alpha = person1.direction - bounce_angle
         beta = person2.direction - bounce_angle
-        print("alpha: %f" % alpha)
-        print("beta: %f" % beta)
 
         # calculate the velocities tangent and normal
         # with regards to the collision axis
@@ -103,10 +113,6 @@ class Person:
 
         person1.direction += bounce_angle
         person2.direction += bounce_angle
-
-        print("Person1 direction after: %f\nPerson2 direction after: %f" % (
-            person1.direction, person2.direction))
-        print('*' * 10)
 
     @staticmethod
     def distance(person1, person2):
@@ -126,7 +132,7 @@ class Person:
 
 class Simulation:
     def __init__(self, size_x, size_y):
-        print("Simulation has not yet begun")
+        print("Simulation initiating")
         self.collisions = 0
         self.step = 0
         self.can_bounce_again = {}
@@ -151,7 +157,7 @@ class Simulation:
                     coord_y = (j + 1) * RESOLUTION_FACTOR
                     new_person = Person(len(self.population), (coord_x, coord_y))
                     if i == POPULATION_SIZE_ROOT // 2 and j == POPULATION_SIZE_ROOT // 2:
-                        new_person.infect()
+                        new_person.infect(self.step)
                     self.population.append(new_person)
         self.init_collision_history()
 
@@ -159,20 +165,21 @@ class Simulation:
         # print("Simulation step #%d" % self.step)
         step_collisions = 0
 
-        for i in range(len(self.population)):
-            person = self.population[i]
-            for j in range(i):
-                other_person = self.population[j]
+        for i, person in enumerate(self.population):
+            for j, other_person in enumerate(self.population[:i]):
                 key = (person.id, other_person.id)
                 if Person.are_colliding(person, other_person):
                     step_collisions += 1
-                    print("Step %d" % self.step)
+                    # print("Step %d" % self.step)
                     if self.can_bounce_again.get(key):
                         Person.bounce(person, other_person)
                         self.can_bounce_again[key] = False
-                    if person.is_infected() ^ other_person.is_infected():
-                        person.infect()
-                        other_person.infect()
+                    if person.is_infected(self.step) and other_person.is_healthy:
+                        other_person.infect(self.step)
+                        self.healthy -= 1
+                        self.infected += 1
+                    elif other_person.is_infected(self.step) and person.is_healthy:
+                        person.infect(self.step)
                         self.healthy -= 1
                         self.infected += 1
                 else:
@@ -193,14 +200,14 @@ class Simulation:
 
     def end(self):
         arcade.close_window()
-        print("%d total collisions" % self.collisions)
+        # print("%d total collisions" % self.collisions)
         self.plot()
 
     def init_collision_history(self):
         for i in range(len(self.population)):
             for j in range(i):
                 self.can_bounce_again[(i, j)] = True
-        print(self.can_bounce_again)
+        # print(self.can_bounce_again)
 
 
 class SimulationWindow(arcade.Window):
@@ -212,7 +219,8 @@ class SimulationWindow(arcade.Window):
     def on_draw(self):
         arcade.start_render()
         for person in self.simulation.population:
-            person.draw()
+            person.draw(self.simulation.step)
+            print("Drawing %s done" % person)
 
     def on_update(self, delta_time):
         for i in range(STEPS_PER_FRAME):
