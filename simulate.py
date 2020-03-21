@@ -240,8 +240,8 @@ class SimulationWindow(arcade.Window):
             self.on_close()
 
     def on_close(self):
-        self.simulation.plot()
         arcade.close_window()
+        self.simulation.plot()
 
     def redraw_live_graph(self):
         prev_x = 0
