@@ -6,10 +6,9 @@ import arcade
 
 # todo better bookkeeping and graphing (incl. recovery stats)
 
+SCREEN_TITLE = "Population Simulator"
 BOX_WIDTH = 600
 BOX_HEIGHT = 600
-SCREEN_TITLE = "Population Simulator"
-
 GRAPH_HEIGHT = 100
 
 BG_COLOR = (250, 250, 250)
@@ -88,7 +87,7 @@ class Person:
 
     def draw(self):
         arcade.draw_circle_filled(center_x=self.coords[0],
-                                  center_y=self.coords[1] + GRAPH_HEIGHT,
+                                  center_y=self.coords[1],
                                   radius=PERSON_RADIUS,
                                   color=state_colors.get(self.health_state))
 
@@ -220,7 +219,7 @@ class Simulation:
 
 class SimulationWindow(arcade.Window):
     def __init__(self):
-        super().__init__(BOX_WIDTH, BOX_HEIGHT + GRAPH_HEIGHT, SCREEN_TITLE)
+        super().__init__(BOX_WIDTH, BOX_HEIGHT, SCREEN_TITLE)
         arcade.set_background_color(BG_COLOR)
         self.simulation = Simulation(POPULATION_SIZE_ROOT, POPULATION_SIZE_ROOT)
 
