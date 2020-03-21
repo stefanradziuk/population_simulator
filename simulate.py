@@ -1,15 +1,16 @@
 import random
-from math import *
-import arcade
-import matplotlib.pyplot as plt
 from enum import Enum
+from math import *
+import matplotlib.pyplot as plt
+import arcade
 
 # todo better bookkeeping and graphing (incl. recovery stats)
 
-# some constants to play with
-SCREEN_WIDTH = 600
-SCREEN_HEIGHT = 600
+BOX_WIDTH = 600
+BOX_HEIGHT = 600
 SCREEN_TITLE = "Population Simulator"
+
+GRAPH_HEIGHT = 100
 
 BG_COLOR = (250, 250, 250)
 HEALTHY_COLOR = (124, 198, 254)
@@ -21,12 +22,13 @@ HEALTHY_COLOR_PLT = (HEALTHY_COLOR[0] / 255, HEALTHY_COLOR[1] / 255, HEALTHY_COL
 INFECTED_COLOR_PLT = (INFECTED_COLOR[0] / 255, INFECTED_COLOR[1] / 255, INFECTED_COLOR[2] / 255)
 RECOVERED_COLOR_PLT = (RECOVERED_COLOR[0] / 255, RECOVERED_COLOR[1] / 255, RECOVERED_COLOR[2] / 255)
 
-STEP_SIZE = 1
+# some simulation constants to play with
+STEP_SIZE = 0.5
 STEPS_PER_FRAME = 1
 POPULATION_SIZE_ROOT = 8  # set to 0 for debugging setup
-RESOLUTION_FACTOR = SCREEN_WIDTH / (POPULATION_SIZE_ROOT + 1)
-PERSON_RADIUS = 15
+PERSON_RADIUS = 20
 RECOVERY_PERIOD = 350
+RESOLUTION_FACTOR = BOX_WIDTH / (POPULATION_SIZE_ROOT + 1)
 
 
 class HealthState(Enum):
@@ -45,7 +47,6 @@ class Person:
         self._person_id = person_id
         self.coords = coords
         self.health_state = HealthState.HEALTHY
-        # self.is_healthy = True  # todo
         self.infection_date = - RECOVERY_PERIOD * 8
         self.direction = random.uniform(0, tau)
         self.velocity = STEP_SIZE
@@ -55,7 +56,6 @@ class Person:
         return self._person_id
 
     def infect(self, date):
-        # self.is_healthy = False
         self.health_state = HealthState.INFECTED
         self.infection_date = date
 
@@ -65,37 +65,30 @@ class Person:
     def is_healthy(self):
         return self.health_state == HealthState.HEALTHY
 
-    def is_infected(self, date):
+    def is_infected(self):
         return self.health_state == HealthState.INFECTED
-        # return not self.is_healthy and self.infection_date + RECOVERY_PERIOD >= date
 
-    def has_recovered(self, date):
+    def has_recovered(self):
         return self.health_state == HealthState.RECOVERED
-        # return not self.is_healthy and self.infection_date + RECOVERY_PERIOD < date
 
     def step(self):
         new_x = self.coords[0] + self.velocity * cos(self.direction)
         new_y = self.coords[1] + self.velocity * sin(self.direction)
 
-        if not (PERSON_RADIUS < new_x < SCREEN_WIDTH - PERSON_RADIUS):
+        if not (PERSON_RADIUS < new_x < BOX_WIDTH - PERSON_RADIUS):
             self.bounce_h()
             new_x = self.coords[0] + self.velocity * cos(self.direction)
 
-        if not (PERSON_RADIUS < new_y < SCREEN_HEIGHT - PERSON_RADIUS):
+        if not (PERSON_RADIUS < new_y < BOX_HEIGHT - PERSON_RADIUS):
             self.bounce_v()
             new_y = self.coords[1] + self.velocity * sin(self.direction)
 
         self.coords = (new_x, new_y)
         self.direction %= tau
 
-    def draw(self, date):
-        # color = HEALTHY_COLOR
-        # if self.has_recovered(date):
-        #     color = RECOVERED_COLOR
-        # elif self.is_infected(date):
-        #     color = INFECTED_COLOR
+    def draw(self):
         arcade.draw_circle_filled(center_x=self.coords[0],
-                                  center_y=self.coords[1],
+                                  center_y=self.coords[1] + GRAPH_HEIGHT,
                                   radius=PERSON_RADIUS,
                                   color=state_colors.get(self.health_state))
 
@@ -163,9 +156,7 @@ class Simulation:
             # debugging mode
             self.population = [Person(0, (400, 300)), Person(1, (200, 300))]
             self.population[0].direction = pi
-            print("Created person with direction %f" % self.population[0].direction)
             self.population[1].direction = 0.3
-            print("Created person with direction %f" % self.population[1].direction)
         else:
             self.population = []
             for i in range(size_x):
@@ -186,10 +177,11 @@ class Simulation:
                 if Person.are_colliding(person, other_person):
                     if self.can_bounce_again.get(key):
                         Person.bounce(person, other_person)
-                        self.can_bounce_again[key] = False
-                    if person.is_infected(self.step) and other_person.is_healthy():
+                        self.can_bounce_again[key] = True  # todo
+                        # self.can_bounce_again[key] = False
+                    if person.is_infected() and other_person.is_healthy():
                         self.infect(other_person)
-                    elif other_person.is_infected(self.step) and person.is_healthy():
+                    elif other_person.is_infected() and person.is_healthy():
                         self.infect(person)
                 else:
                     self.can_bounce_again[key] = True
@@ -204,10 +196,6 @@ class Simulation:
         plt.setp(line, color=INFECTED_COLOR_PLT, linewidth=3.0, label='Infected')
         plt.ylabel('Simulation history')
         plt.show()
-
-    def end(self):
-        arcade.close_window()
-        self.plot()
 
     def init_collision_history(self):
         for i in range(len(self.population)):
@@ -232,21 +220,44 @@ class Simulation:
 
 class SimulationWindow(arcade.Window):
     def __init__(self):
-        super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+        super().__init__(BOX_WIDTH, BOX_HEIGHT + GRAPH_HEIGHT, SCREEN_TITLE)
         arcade.set_background_color(BG_COLOR)
         self.simulation = Simulation(POPULATION_SIZE_ROOT, POPULATION_SIZE_ROOT)
 
     def on_draw(self):
         arcade.start_render()
         for person in self.simulation.population:
-            person.draw(self.simulation.step)
+            person.draw()
+        self.redraw_live_graph()
+        if self.simulation.infected <= 0:
+            self.on_close()
 
     def on_update(self, delta_time):
         for i in range(STEPS_PER_FRAME):
             self.simulation.run_step()
-        # if self.simulation.infected == 0:
-        if self.simulation.step == 1000:
-            self.simulation.end()
+
+    def on_key_press(self, key, modifiers):
+        if key == arcade.key.Q:
+            self.on_close()
+
+    def on_close(self):
+        self.simulation.plot()
+        arcade.close_window()
+
+    def redraw_live_graph(self):
+        prev_x = 0
+        prev_y = 0
+        for step, infected in enumerate(self.simulation.infected_history[::10]):
+            curr_x = step * 2
+            curr_y = infected / len(self.simulation.population) * GRAPH_HEIGHT
+            arcade.draw_line(start_x=prev_x,
+                             start_y=prev_y,
+                             end_x=curr_x,
+                             end_y=curr_y,
+                             line_width=4,
+                             color=arcade.color.BLACK)
+            prev_x = curr_x
+            prev_y = curr_y
 
 
 def main():

@@ -1,4 +1,4 @@
 # population_simulator
 
-a simple epidemic model
+a simple physics based simulation modelling the spread of an epidemic
 inspired by https://www.washingtonpost.com/graphics/2020/world/corona-simulator/
