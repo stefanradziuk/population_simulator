@@ -23,10 +23,11 @@ RECOVERED_COLOR_PLT = (RECOVERED_COLOR[0] / 255, RECOVERED_COLOR[1] / 255, RECOV
 
 # some simulation constants to play with
 STEP_SIZE = 1
-STEPS_PER_FRAME = 10
-POPULATION_SIZE_ROOT = 0  # set to 0 for debugging setup
-PERSON_RADIUS = 60
+STEPS_PER_FRAME = 1
+POPULATION_SIZE_ROOT = 6  # set to 0 for debugging setup
+PERSON_RADIUS = 14
 RECOVERY_PERIOD = 350
+FRACTION_ISOLATING = 0.8
 RESOLUTION_FACTOR = BOX_WIDTH / (POPULATION_SIZE_ROOT + 1)
 
 
@@ -42,13 +43,14 @@ state_colors = {HealthState.HEALTHY: HEALTHY_COLOR,
 
 
 class Person:
-    def __init__(self, person_id, coords):
+    def __init__(self, person_id, coords, health_state=HealthState.HEALTHY, isolating=None, direction=None):
         self._person_id = person_id
         self.coords = coords
-        self.health_state = HealthState.HEALTHY
-        self.infection_date = - RECOVERY_PERIOD * 8
-        self.direction = random.uniform(0, tau)
-        self.velocity = STEP_SIZE
+        self.health_state = health_state
+        self.infection_date = - RECOVERY_PERIOD * 2
+        self.isolating = random.random() < FRACTION_ISOLATING if isolating == None else isolating
+        self.direction = random.uniform(0, tau) if direction == None else direction
+        self.velocity = 0 if self.isolating else STEP_SIZE
 
     @property
     def id(self):
@@ -118,11 +120,16 @@ class Person:
         v2_tan = person2.velocity * sin(beta)
         v2_nor = person2.velocity * cos(beta)
 
-        person1.velocity = sqrt(pow(v1_tan, 2) + pow(v2_nor, 2))
-        person2.velocity = sqrt(pow(v2_tan, 2) + pow(v1_nor, 2))
+        if person1.isolating or person2.isolating:
+            person1.direction = atan2(v1_tan, - v1_nor)
+            person2.direction = atan2(v2_tan, - v2_nor)
+            
+        else:
+            person1.velocity = sqrt(pow(v1_tan, 2) + pow(v2_nor, 2))
+            person2.velocity = sqrt(pow(v2_tan, 2) + pow(v1_nor, 2))
 
-        person1.direction = atan2(v1_tan, v2_nor)
-        person2.direction = atan2(v2_tan, v1_nor)
+            person1.direction = atan2(v1_tan, v2_nor)
+            person2.direction = atan2(v2_tan, v1_nor)
 
         person1.direction += bounce_angle
         person2.direction += bounce_angle
@@ -145,9 +152,6 @@ class Simulation:
         self.can_bounce_again = {}
         self.infection_dates = {}
 
-        # todo move those elsewhere
-        self.healthy = size_x * size_y - 1
-        self.infected = 1
         self.healthy_history = []
         self.infected_history = []
 
@@ -164,9 +168,15 @@ class Simulation:
                     coord_y = (j + 1) * RESOLUTION_FACTOR
                     new_person = Person(len(self.population), (coord_x, coord_y))
                     if i == POPULATION_SIZE_ROOT // 2 and j == POPULATION_SIZE_ROOT // 2:
-                        self.infect(new_person)
+                        new_person = Person(len(self.population), (coord_x, coord_y),
+                                            health_state=HealthState.INFECTED,
+                                            isolating=False)
+                        self.infection_dates[new_person.id] = self.step
                     self.population.append(new_person)
         self.init_collision_history()
+
+        self.healthy = len(list(filter(lambda x: x.is_healthy(), self.population)))
+        self.infected = len(list(filter(lambda x: x.is_infected(), self.population)))
 
     def run_step(self):
         self.recovery_check()
@@ -176,8 +186,7 @@ class Simulation:
                 if Person.are_colliding(person, other_person):
                     if self.can_bounce_again.get(key):
                         Person.bounce(person, other_person)
-                        self.can_bounce_again[key] = True  # todo
-                        # self.can_bounce_again[key] = False
+                        self.can_bounce_again[key] = True # False for safe collisions
                     if person.is_infected() and other_person.is_healthy():
                         self.infect(other_person)
                     elif other_person.is_infected() and person.is_healthy():
