@@ -22,10 +22,10 @@ INFECTED_COLOR_PLT = (INFECTED_COLOR[0] / 255, INFECTED_COLOR[1] / 255, INFECTED
 RECOVERED_COLOR_PLT = (RECOVERED_COLOR[0] / 255, RECOVERED_COLOR[1] / 255, RECOVERED_COLOR[2] / 255)
 
 # some simulation constants to play with
-STEP_SIZE = 0.5
-STEPS_PER_FRAME = 1
-POPULATION_SIZE_ROOT = 8  # set to 0 for debugging setup
-PERSON_RADIUS = 20
+STEP_SIZE = 1
+STEPS_PER_FRAME = 10
+POPULATION_SIZE_ROOT = 0  # set to 0 for debugging setup
+PERSON_RADIUS = 60
 RECOVERY_PERIOD = 350
 RESOLUTION_FACTOR = BOX_WIDTH / (POPULATION_SIZE_ROOT + 1)
 
@@ -91,6 +91,12 @@ class Person:
                                   radius=PERSON_RADIUS,
                                   color=state_colors.get(self.health_state))
 
+    def bounce_v(self):
+        self.direction = tau - self.direction
+
+    def bounce_h(self):
+        self.direction = pi - self.direction
+
     def bounce_angle(self, other_person):
         dx = self.coords[0] - other_person.coords[0]
         dy = self.coords[1] - other_person.coords[1]
@@ -129,12 +135,6 @@ class Person:
     @staticmethod
     def are_colliding(person1, person2):
         return Person.distance(person1, person2) <= 2 * PERSON_RADIUS
-
-    def bounce_v(self):
-        self.direction = tau - self.direction
-
-    def bounce_h(self):
-        self.direction = pi - self.direction
 
 
 class Simulation:
@@ -244,10 +244,13 @@ class SimulationWindow(arcade.Window):
         self.simulation.plot()
 
     def redraw_live_graph(self):
+        X_STRETCH = 2
+        X_RESOLUTION = 10
         prev_x = 0
         prev_y = 0
-        for step, infected in enumerate(self.simulation.infected_history[::10]):
-            curr_x = step * 2
+        graph_length = BOX_WIDTH * X_RESOLUTION // X_STRETCH
+        for step, infected in enumerate(self.simulation.infected_history[-graph_length::X_RESOLUTION]):
+            curr_x = step * X_STRETCH
             curr_y = infected / len(self.simulation.population) * GRAPH_HEIGHT
             arcade.draw_line(start_x=prev_x,
                              start_y=prev_y,
